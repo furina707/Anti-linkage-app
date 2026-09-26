@@ -1,0 +1,7 @@
+id=antilinkage_fingerprint
+name=Anti-Linkage Fingerprint Isolator
+version=1.0.0
+versionCode=100
+author=AntiLinkage Team
+description=Modern LibXposed Module for device identifier spoofing and multi-instance fingerprint isolation
+minLibXposedVersion=100

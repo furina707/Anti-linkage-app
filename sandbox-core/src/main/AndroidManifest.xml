@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- 预埋占坑 Activity，配置各进程管道 -->
+        <activity
+            android:name=".stub.StubActivityP0"
+            android:exported="false"
+            android:process=":virtual_p0"
+            android:theme="@android:style/Theme.NoTitleBar" />
+
+        <activity
+            android:name=".stub.StubActivityP1"
+            android:exported="false"
+            android:process=":virtual_p1"
+            android:theme="@android:style/Theme.NoTitleBar" />
+
+        <activity
+            android:name=".stub.StubActivityP2"
+            android:exported="false"
+            android:process=":virtual_p2"
+            android:theme="@android:style/Theme.NoTitleBar" />
+
+        <!-- 预埋占坑 Service -->
+        <service
+            android:name=".stub.StubServiceP0"
+            android:exported="false"
+            android:process=":virtual_p0" />
+
+        <service
+            android:name=".stub.StubServiceP1"
+            android:exported="false"
+            android:process=":virtual_p1" />
+
+        <!-- 预埋占坑 Provider -->
+        <provider
+            android:name=".stub.StubContentProvider"
+            android:authorities="${applicationId}.sandbox.stub.provider"
+            android:exported="false" />
+    </application>
+
+</manifest>

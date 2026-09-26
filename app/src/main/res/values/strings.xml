@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">防关联分身大师</string>
+    <string name="title_instances">多开分身与独立指纹列表</string>
+    <string name="btn_add_instance">创建新分身</string>
+    <string name="btn_launch">启动分身</string>
+    <string name="btn_edit_fingerprint">指纹隔离配置</string>
+    <string name="btn_delete">删除分身</string>
+    <string name="btn_random_fingerprint">随机生成指纹</string>
+    <string name="btn_save">保存配置</string>
+    <string name="btn_cancel">取消</string>
+    <string name="title_edit_fingerprint">分身独立指纹设置</string>
+    <string name="label_android_id">Android ID:</string>
+    <string name="label_imei">IMEI 码:</string>
+    <string name="label_mac">WiFi MAC 地址:</string>
+    <string name="label_brand_model">手机品牌与型号:</string>
+    <string name="label_location">虚拟地理经纬度:</string>
+</resources>

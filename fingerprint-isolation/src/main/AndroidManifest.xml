@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Modern LibXposed Module Configuration -->
+        <meta-data
+            android:name="xposedminversion"
+            android:value="100" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="Anti-linkage Device Fingerprint Isolation Module based on Modern LibXposed API" />
+    </application>
+</manifest>
