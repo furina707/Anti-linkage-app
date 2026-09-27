@@ -23,3 +23,5 @@ fingerprint-isolation/build/
 tools/
 *.zip
 *.tar.gz
+*.apk
+/release/
