@@ -22,6 +22,7 @@ open class StubActivity : Activity() {
             try {
                 Log.i("StubActivity", "Fallback unwrapping target intent in StubActivity: ${targetIntent.component?.className}")
                 targetIntent.removeExtra(IActivityTaskManagerHook.EXTRA_TARGET_INTENT)
+                targetIntent.putExtra(IActivityTaskManagerHook.EXTRA_BYPASS_HOOK, true)
                 targetIntent.addFlags(Intent.FLAG_ACTIVITY_FORWARD_RESULT)
                 startActivity(targetIntent)
                 finish()
