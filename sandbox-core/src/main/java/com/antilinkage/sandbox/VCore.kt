@@ -12,9 +12,11 @@ import com.antilinkage.fingerprint.config.InstanceFingerprint
 import com.antilinkage.sandbox.hook.ActivityThreadHook
 import com.antilinkage.sandbox.hook.IActivityTaskManagerHook
 import com.antilinkage.sandbox.hook.IPackageManagerHook
+import com.antilinkage.sandbox.loader.DexInjector
 import com.antilinkage.sandbox.loader.VClassLoader
 import com.antilinkage.sandbox.vfs.VFileSystem
 import java.io.File
+import java.io.FileNotFoundException
 
 /**
  * 虚拟化沙箱核心控制器 (VCore)
@@ -83,19 +85,60 @@ object VCore {
     ) {
         init(context)
 
-        // 1. 解析目标 APK 信息
-        val pm = context.packageManager
-        val packageInfo = pm.getPackageArchiveInfo(
-            targetApk.absolutePath,
-            PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES
-        ) ?: run {
-            Log.e(TAG, "Cannot parse target APK: ${targetApk.absolutePath}")
-            return
+        Log.i(TAG, "Starting launchVirtualApp for user $userId, target: ${targetApk.absolutePath}")
+
+        // 1. 校验目标 APK 是否存在
+        if (!targetApk.exists()) {
+            throw FileNotFoundException("目标 APK 文件不存在: ${targetApk.absolutePath}")
         }
 
-        val targetPackageName = packageInfo.packageName
-        packageInfo.applicationInfo.sourceDir = targetApk.absolutePath
-        packageInfo.applicationInfo.publicSourceDir = targetApk.absolutePath
+        val pm = context.packageManager
+        var packageInfo: PackageInfo? = null
+
+        // 尝试从 APK 归档静态解析 PackageInfo
+        try {
+            packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageArchiveInfo(
+                    targetApk.absolutePath,
+                    PackageManager.PackageInfoFlags.of((PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES).toLong())
+                )
+            } else {
+                pm.getPackageArchiveInfo(
+                    targetApk.absolutePath,
+                    PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES
+                )
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Failed to getPackageArchiveInfo: ${t.message}")
+        }
+
+        // 如果读取 APK 归档返回 null，检查 customFingerprint 中指定的包名是否安装在系统
+        val targetPackageName = packageInfo?.packageName
+            ?: customFingerprint?.packageName
+            ?: run {
+                throw IllegalStateException("无法解析目标 APK 包信息: ${targetApk.absolutePath}")
+            }
+
+        // 从系统加载已安装包作为补充（支持已安装系统应用多开）
+        if (packageInfo == null) {
+            packageInfo = try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.getPackageInfo(
+                        targetPackageName,
+                        PackageManager.PackageInfoFlags.of((PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES).toLong())
+                    )
+                } else {
+                    pm.getPackageInfo(targetPackageName, PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES)
+                }
+            } catch (t: Throwable) {
+                null
+            }
+        }
+
+        if (packageInfo != null) {
+            packageInfo.applicationInfo.sourceDir = targetApk.absolutePath
+            packageInfo.applicationInfo.publicSourceDir = targetApk.absolutePath
+        }
 
         // 2. 初始化分身专属文件系统
         val userRoot = VFileSystem.initUserEnvironment(context, targetPackageName, userId)
@@ -106,13 +149,16 @@ object VCore {
         FingerprintManager.saveToFile(configFile, fp)
         FingerprintManager.setCurrentFingerprint(fp)
 
-        // 4. 创建隔离 ClassLoader
-        val nativeDir = File(userRoot, "lib")
+        // 4. 创建隔离 ClassLoader 与 Dex 注入
+        val nativeDir = File(userRoot, "lib").apply { if (!exists()) mkdirs() }
         val classLoader = VClassLoader.create(
             targetApk,
             nativeDir,
             context.classLoader
         )
+
+        // 动态将目标 APK 的 Dex 注入到宿主类加载器中，防止 ActivityThread 实例化 TargetActivity 时 ClassNotFound
+        DexInjector.injectApk(context, targetApk, nativeDir)
 
         // 5. 挂载系统服务钩子
         IPackageManagerHook.install(context, targetPackageName, packageInfo)
@@ -123,16 +169,40 @@ object VCore {
         AntiLinkageXposedModule.installDirectHooks(classLoader, configFile)
 
         // 7. 查找主启动入口 Activity 并拉起
-        val launchActivity = packageInfo.activities?.firstOrNull()?.name
-        if (launchActivity != null) {
-            val intent = Intent().apply {
-                setClassName(targetPackageName, launchActivity)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        var launchActivity: String? = null
+
+        // 优先 1：查询系统 LaunchIntent
+        try {
+            val launchIntent = pm.getLaunchIntentForPackage(targetPackageName)
+            if (launchIntent?.component != null) {
+                launchActivity = launchIntent.component?.className
             }
-            Log.i(TAG, "Launching virtual app [$targetPackageName] for user $userId via $launchActivity")
-            context.startActivity(intent)
-        } else {
-            Log.e(TAG, "No activity found in target APK!")
+        } catch (_: Throwable) {}
+
+        // 优先 2：从 packageInfo.activities 中查找
+        if (launchActivity == null && packageInfo?.activities != null) {
+            val candidate = packageInfo.activities?.firstOrNull { act ->
+                act.name.contains("Main", ignoreCase = true) ||
+                act.name.contains("Launch", ignoreCase = true) ||
+                act.name.contains("Home", ignoreCase = true)
+            }
+            launchActivity = candidate?.name ?: packageInfo.activities?.firstOrNull()?.name
         }
+
+        // 兜底：如果是宿主自身分身，拉起 MainActivity
+        if (launchActivity == null && targetPackageName == context.packageName) {
+            launchActivity = "${context.packageName}.MainActivity"
+        }
+
+        if (launchActivity == null) {
+            throw IllegalStateException("未在应用 [$targetPackageName] 中找到可启动的 Activity 入口！")
+        }
+
+        val intent = Intent().apply {
+            setClassName(targetPackageName, launchActivity)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        Log.i(TAG, "Launching virtual app [$targetPackageName] for user $userId via $launchActivity")
+        context.startActivity(intent)
     }
 }

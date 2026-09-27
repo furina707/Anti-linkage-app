@@ -10,8 +10,10 @@ import com.antilinkage.app.databinding.ActivityMainBinding
 import com.antilinkage.app.model.ClonedAppInfo
 import com.antilinkage.app.ui.AppPickerDialog
 import com.antilinkage.app.ui.ClonedAppAdapter
+import com.antilinkage.app.ui.LogDiagnosticsDialog
 import com.antilinkage.app.ui.ProfileEditDialog
 import com.antilinkage.app.util.AppIconHelper
+import com.antilinkage.app.util.AppLogger
 import com.antilinkage.fingerprint.config.InstanceFingerprint
 import com.antilinkage.sandbox.VCore
 import java.io.File
@@ -73,6 +75,10 @@ class MainActivity : AppCompatActivity() {
             updateLayoutManager()
         }
 
+        binding.btnLogs.setOnClickListener {
+            LogDiagnosticsDialog.show(this, "用户主动查看运行日志与诊断", null, false)
+        }
+
         binding.btnAddInstance.setOnClickListener {
             // 弹出应用选择器，支持从手机已安装的所有应用中直接挑选多开目标
             AppPickerDialog.show(this) { appName, packageName, apkFile ->
@@ -96,6 +102,7 @@ class MainActivity : AppCompatActivity() {
                 instances.add(newInstance)
                 adapter.notifyItemInserted(instances.size - 1)
                 binding.rvInstances.smoothScrollToPosition(instances.size - 1)
+                AppLogger.i("MainActivity", "创建新分身: $appName ($packageName, id=$newUserId)")
                 Toast.makeText(this, "已为 [${appName}] 创建分身 #${newUserId}，已分配全新硬件指纹", Toast.LENGTH_SHORT).show()
             }
         }
@@ -106,6 +113,7 @@ class MainActivity : AppCompatActivity() {
             "🚀 立即启动分身",
             "⚙️ 配置独立指纹 (Android ID/IMEI/MAC/GPS)",
             "ℹ️ 查看当前隔离指纹参数",
+            "📋 查看诊断日志 / 上报 GitHub",
             "🗑️ 删除此分身"
         )
 
@@ -116,7 +124,8 @@ class MainActivity : AppCompatActivity() {
                     0 -> launchInstance(item)
                     1 -> editFingerprint(item)
                     2 -> showFingerprintDetails(item)
-                    3 -> deleteInstance(item)
+                    3 -> LogDiagnosticsDialog.show(this, "分身 [${item.appName}] 诊断排查", null, false)
+                    4 -> deleteInstance(item)
                 }
             }
             .setNegativeButton("取消", null)
@@ -130,6 +139,7 @@ class MainActivity : AppCompatActivity() {
             if (index != -1) {
                 adapter.notifyItemChanged(index)
             }
+            AppLogger.i("MainActivity", "更新分身 #${item.userId} 指纹: ${updated.brand} ${updated.model}")
             Toast.makeText(this, "分身 #${item.userId} 独立指纹配置已更新", Toast.LENGTH_SHORT).show()
         }
     }
@@ -143,6 +153,7 @@ class MainActivity : AppCompatActivity() {
             IMEI: ${fp.imei}
             MAC: ${fp.macAddress}
             虚拟定位: ${fp.latitude}, ${fp.longitude}
+            目标 APK: ${item.apkFile.absolutePath}
             沙箱隔离路径:
             /data/data/${packageName}/virtual/users/${item.userId}/${item.packageName}
         """.trimIndent()
@@ -160,6 +171,7 @@ class MainActivity : AppCompatActivity() {
         if (index != -1) {
             instances.removeAt(index)
             adapter.notifyItemRemoved(index)
+            AppLogger.i("MainActivity", "删除分身 #${item.userId}")
             Toast.makeText(this, "分身 #${item.userId} 已删除", Toast.LENGTH_SHORT).show()
         }
     }
@@ -210,10 +222,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun launchInstance(item: ClonedAppInfo) {
+        AppLogger.i("MainActivity", "准备拉起分身 #${item.userId} [${item.appName}] (${item.packageName})")
         Toast.makeText(
             this,
             "正在通过沙箱拉起分身 #${item.userId} (Android ID: ${item.fingerprint.androidId})",
-            Toast.LENGTH_LONG
+            Toast.LENGTH_SHORT
         ).show()
 
         try {
@@ -223,8 +236,18 @@ class MainActivity : AppCompatActivity() {
                 userId = item.userId,
                 customFingerprint = item.fingerprint
             )
+            AppLogger.i("MainActivity", "分身 #${item.userId} 拉起指令已发送")
         } catch (e: Exception) {
-            Toast.makeText(this, "启动失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            AppLogger.e("MainActivity", "分身 #${item.userId} 启动异常: ${e.message}", e)
+            Toast.makeText(this, "启动失败: ${e.message}", Toast.LENGTH_LONG).show()
+
+            // 弹出诊断与自动上传 GitHub 对话框
+            LogDiagnosticsDialog.show(
+                context = this,
+                errorTitle = "分身 [${item.appName}] 启动失败: ${e.message}",
+                exception = e,
+                autoTriggerUpload = true
+            )
         }
     }
 }
