@@ -37,6 +37,9 @@ class MainActivity : AppCompatActivity() {
 
         // 默认初始化生成示范分身实例
         createInitialSampleInstances()
+
+        // 启动时后台静默检查是否有 GitHub 新版本发布
+        com.antilinkage.app.util.AppUpdateManager.checkUpdate(this, isManualCheck = false)
     }
 
     private fun setupRecyclerView() {
@@ -77,6 +80,10 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnLogs.setOnClickListener {
             LogDiagnosticsDialog.show(this, "用户主动查看运行日志与诊断", null, false)
+        }
+
+        binding.btnCheckUpdate.setOnClickListener {
+            com.antilinkage.app.util.AppUpdateManager.checkUpdate(this, isManualCheck = true)
         }
 
         binding.btnAddInstance.setOnClickListener {
